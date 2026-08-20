@@ -1,7 +1,9 @@
+import dns from "node:dns";
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 function createTransporter() {
-  const host = process.env.SMTP_HOST;
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
   const port = parseInt(process.env.SMTP_PORT || "587", 10);
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
@@ -18,11 +20,17 @@ function createTransporter() {
       user,
       pass,
     },
-    // Force IPv4 connection to prevent IPv6 socket ENETUNREACH
+    // ⚡️ CRITICAL: Forces Nodemailer to resolve ONLY IPv4 addresses to prevent ENETUNREACH
     family: 4,
+    lookup: (hostname, options, callback) => {
+      dns.lookup(hostname, { family: 4, all: false }, (err, address, family) => {
+        callback(err, address, family);
+      });
+    },
     connectionTimeout: 10000,
     tls: {
       rejectUnauthorized: false,
+      servername: host,
     },
   });
 }
@@ -41,9 +49,6 @@ function getFromHeader() {
  * Send Signup / Account Verification OTP Email to user
  */
 export async function sendSignupOTPEmail(toEmail, otpCode, userName = "Runner") {
-  const transporter = createTransporter();
-  const fromName = getFromHeader();
-
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; background-color: #f4f6f8; padding: 40px 20px; color: #1e293b;">
       <div style="max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
@@ -71,13 +76,41 @@ export async function sendSignupOTPEmail(toEmail, otpCode, userName = "Runner") 
     </div>
   `;
 
+  // 1. Check if Resend API is configured (Bypasses SMTP port blocking on Render completely via HTTPS)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const fromEmail = process.env.RESEND_FROM || "Munnar Marathon <onboarding@resend.dev>";
+      const { data, error } = await resend.emails.send({
+        from: fromEmail,
+        to: [toEmail],
+        subject: `👟 ${otpCode} is your Munnar Marathon Verification Code`,
+        html: htmlContent,
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      console.log(`✅ [RESEND] Signup OTP sent to ${toEmail} (ID: ${data?.id})`);
+      return { success: true, messageId: data?.id };
+    } catch (resendError) {
+      console.error(`⚠️ [RESEND ERROR] Failed to send via Resend API:`, resendError.message);
+      console.log(`ℹ️ Falling back to Nodemailer SMTP transport...`);
+    }
+  }
+
+  // 2. Nodemailer SMTP Fallback with IPv4 Enforcement
+  const transporter = createTransporter();
+  const fromName = getFromHeader();
+
   if (!transporter) {
     console.log(`\n======================================================`);
     console.log(`📧 [SMTP SIMULATOR] Signup Verification Email to ${toEmail}`);
     console.log(`👤 User: ${userName}`);
     console.log(`🔑 OTP Code: ${otpCode}`);
     console.log(`⏰ Expiry: 5 minutes`);
-    console.log(`💡 (Configure SMTP_HOST, SMTP_USER, SMTP_PASS in .env for real email delivery)`);
+    console.log(`💡 (Configure RESEND_API_KEY or SMTP_USER/PASS for real delivery)`);
     console.log(`======================================================\n`);
     return { success: true, simulated: true };
   }
@@ -102,9 +135,6 @@ export async function sendSignupOTPEmail(toEmail, otpCode, userName = "Runner") 
  * Send Password Reset OTP Email to user
  */
 export async function sendResetOTPEmail(toEmail, otpCode) {
-  const transporter = createTransporter();
-  const fromName = getFromHeader();
-
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; background-color: #f4f6f8; padding: 40px 20px; color: #1e293b;">
       <div style="max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
@@ -132,12 +162,40 @@ export async function sendResetOTPEmail(toEmail, otpCode) {
     </div>
   `;
 
+  // 1. Check if Resend API is configured (Bypasses SMTP port blocking on Render completely via HTTPS)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const fromEmail = process.env.RESEND_FROM || "Munnar Marathon <onboarding@resend.dev>";
+      const { data, error } = await resend.emails.send({
+        from: fromEmail,
+        to: [toEmail],
+        subject: `🔑 ${otpCode} is your Munnar Marathon Password Reset Code`,
+        html: htmlContent,
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      console.log(`✅ [RESEND] Password Reset OTP sent to ${toEmail} (ID: ${data?.id})`);
+      return { success: true, messageId: data?.id };
+    } catch (resendError) {
+      console.error(`⚠️ [RESEND ERROR] Failed to send via Resend API:`, resendError.message);
+      console.log(`ℹ️ Falling back to Nodemailer SMTP transport...`);
+    }
+  }
+
+  // 2. Nodemailer SMTP Fallback with IPv4 Enforcement
+  const transporter = createTransporter();
+  const fromName = getFromHeader();
+
   if (!transporter) {
     console.log(`\n======================================================`);
     console.log(`📧 [SMTP SIMULATOR] Password Reset Email to ${toEmail}`);
     console.log(`🔑 OTP Code: ${otpCode}`);
     console.log(`⏰ Expiry: 5 minutes`);
-    console.log(`💡 (Configure SMTP_HOST, SMTP_USER, SMTP_PASS in .env for real email delivery)`);
+    console.log(`💡 (Configure RESEND_API_KEY or SMTP_USER/PASS for real delivery)`);
     console.log(`======================================================\n`);
     return { success: true, simulated: true };
   }
