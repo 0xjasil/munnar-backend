@@ -1,0 +1,422 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // "SUPER_ADMIN", "ADMIN", "ORGANIZER", "VOLUNTEER", "RUNNER"
+  label       String
+  description String?
+  permissions String[]
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("roles")
+}
+
+enum RegistrationStatus {
+  PENDING_APPROVAL
+  REJECTED
+  PAYMENT_PENDING
+  CONFIRMED
+  REGISTERED
+  CHECKED_IN
+  CANCELLED
+}
+
+enum CheckInStatus {
+  NOT_CHECKED_IN
+  CHECKED_IN
+  NO_SHOW
+}
+
+enum CertificateStatus {
+  NOT_ELIGIBLE
+  PENDING
+  ISSUED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum BibStatus {
+  UNASSIGNED
+  ASSIGNED
+  DISPATCHED
+  CLAIMED
+}
+
+model User {
+  id                String         @id @default(uuid())
+  email             String         @unique
+  username          String?        @unique
+  passwordHash      String?
+  googleId          String?        @unique
+  authProvider      String?        @default("email")
+  fullName          String
+  mobile            String?
+  roleId            String?
+  role              Role?          @relation(fields: [roleId], references: [id])
+  roleName          String?        @default("RUNNER")
+  emailVerified     Boolean        @default(false)
+  active            Boolean        @default(true)
+  otpCode           String?
+  otpExpiresAt      DateTime?
+  avatarUrl         String?
+  dob               DateTime?
+  gender            String?
+  bloodGroup        String?
+  nationality       String?        @default("Indian")
+  address           String?
+  emergencyName     String?
+  emergencyPhone    String?
+  medicalConditions String?
+  tshirtSize        String?        @default("M")
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  registrations     Registration[]
+  refreshTokens     RefreshToken[]
+  notifications     Notification[]
+  payments          Payment[]
+  certificates      Certificate[]
+  results           Result[]
+  testimonials      Testimonial[]
+  otps              OtpVerification[]
+
+  @@index([roleName, active])
+  @@map("users")
+}
+
+model OtpVerification {
+  id          String    @id @default(uuid())
+  email       String
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  otpHash     String
+  purpose     String    // "SIGNUP" | "PASSWORD_RESET"
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  verifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([email, purpose])
+  @@map("otp_verifications")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model EventCategory {
+  id            String    @id @default(uuid())
+  name          String    @unique
+  slug          String    @unique
+  description   String?
+  icon          String?
+  distance      String?
+  startingPrice Float?
+  displayOrder  Int       @default(0)
+  active        Boolean   @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  events        Event[]
+
+  @@map("event_categories")
+}
+
+model Event {
+  id                   String         @id @default(uuid())
+  slug                 String         @unique
+  title                String
+  subtitle             String?
+  distance             String
+  date                 DateTime
+  location             String
+  price                Float
+  maxCapacity          Int            @default(500)
+  currentRegistrations Int            @default(0)
+  description          String?
+  shortDescription     String?
+  bannerImage          String?
+  galleryImages        String[]
+  brochure             String?
+  sponsorLogos         String[]
+  status               String         @default("OPEN")
+  elevationGain        String?
+  cutoffTime           String?
+  categoryId           String?
+  category             EventCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  eventType            String?
+  deletedAt            DateTime?
+  
+  // Dynamic Page Content
+  startTime            String?
+  endTime              String?
+  regOpen              DateTime?
+  regClose             DateTime?
+  venue                String?
+  address              String?
+  mapLink              String?
+  difficulty           String?
+  routeDescription     String?
+  waitingList          Boolean?       @default(false)
+  ageLimit             String?
+  emergencyContactReq  Boolean?       @default(true)
+  idProofReq           Boolean?       @default(true)
+  medicalCertificateReq Boolean?      @default(false)
+  terms                String?
+  earlyBirdFee         Float?
+  couponsEnabled       Boolean?       @default(false)
+  metaTitle            String?
+  metaDescription      String?
+  keywords             String?
+  schedule             Json?
+  includes             String[]
+  rules                Json?
+  faqs                 Json?
+  tickets              Json?
+
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  registrations        Registration[]
+  results              Result[]
+  routes               EventRoute[]
+
+  @@index([status, categoryId])
+  @@map("events")
+}
+
+model EventRoute {
+  id               String    @id @default(uuid())
+  title            String
+  slug             String    @unique
+  eventId          String
+  event            Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  distance         String
+  elevationProfile String?
+  gpxUrl           String?
+  mapImageUrl      String?
+  difficulty       String?
+  description      String?
+  checkpoints      String[]
+  displayOrder     Int       @default(0)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("event_routes")
+}
+
+model Registration {
+  id                 String             @id @default(uuid())
+  registrationNumber String             @unique
+  userId             String
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId            String
+  event              Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tier               String             @default("standard")
+  subtotal           Float
+  taxes              Float
+  total              Float
+  paymentStatus      PaymentStatus      @default(PENDING)
+  paymentId          String?
+  status             RegistrationStatus @default(PENDING_APPROVAL)
+  tshirtSize         String             @default("M")
+  dob                DateTime?
+  age                Int?
+  bloodGroup         String?
+  emergencyName      String?
+  emergencyPhone     String?
+  country            String             @default("India")
+  idProofUrl         String?
+  certificateUrl     String?
+  checkInStatus      CheckInStatus      @default(NOT_CHECKED_IN)
+  certificateStatus  CertificateStatus  @default(PENDING)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  bib                BibNumber?
+  certificates       Certificate[]
+  payments           Payment[]
+
+  @@index([eventId])
+  @@index([userId])
+  @@index([paymentStatus, status])
+  @@map("registrations")
+}
+
+model BibNumber {
+  id             String        @id @default(uuid())
+  registrationId String?       @unique
+  registration   Registration? @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  bibNumber      String        @unique
+  category       String
+  status         BibStatus     @default(UNASSIGNED)
+  qrCode         String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([registrationId])
+  @@index([category, status])
+  @@map("bib_numbers")
+}
+
+model BibSetting {
+  id            String   @id @default(uuid())
+  category      String   @unique
+  prefix        String
+  startNumber   Int
+  currentNumber Int
+  digits        Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("bib_settings")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registrationId String?
+  registration   Registration? @relation(fields: [registrationId], references: [id])
+  invoiceId      String        @unique
+  amount         Float
+  status         PaymentStatus @default(COMPLETED)
+  paymentMethod  String        @default("Razorpay")
+  createdAt      DateTime      @default(now())
+
+  @@index([registrationId])
+  @@map("payments")
+}
+
+model Certificate {
+  id             String        @id @default(uuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registrationId String?
+  registration   Registration? @relation(fields: [registrationId], references: [id])
+  title          String
+  issueDate      DateTime      @default(now())
+  downloadUrl    String?
+  createdAt      DateTime      @default(now())
+
+  @@map("certificates")
+}
+
+model Result {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  bibNumber   String
+  finishTime  String
+  rankOverall Int?
+  createdAt   DateTime @default(now())
+
+  @@map("results")
+}
+
+model ContactSubmission {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  subject   String?
+  message   String
+  status    String   @default("UNREAD")
+  createdAt DateTime @default(now())
+
+  @@map("contact_submissions")
+}
+
+model GalleryImage {
+  id           String    @id @default(uuid())
+  imageUrl     String
+  span         String?
+  altText      String?
+  createdAt    DateTime  @default(now())
+
+  @@map("gallery_images")
+}
+
+model HomepageHero {
+  id             String   @id @default(uuid())
+  badgeText      String?  @default("Kerala · India · 17 Jan 2027")
+  badgePill      String?  @default("World Athletics & AIMS Certified")
+  title          String   @default("Munnar")
+  highlightTitle String?  @default("Marathon")
+  description    String   @default("Run through the heart of nature a soulful course of tea hills, mist and morning light.")
+  imageUrl       String?
+  ctaText        String   @default("Reserve Your Bib")
+  ctaUrl         String   @default("#register")
+  videoUrl       String?
+  updatedAt      DateTime @updatedAt
+
+  @@map("homepage_hero")
+}
+
+model Sponsor {
+  id           String   @id @default(uuid())
+  name         String
+  logoUrl      String
+  websiteUrl   String?
+  tier         String?  @default("Performance")
+  displayOrder Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("sponsors")
+}
+
+model Testimonial {
+  id           String   @id @default(uuid())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  designation  String?
+  company      String?
+  message      String
+  imageUrl     String?
+  isPublished  Boolean  @default(true)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("testimonials")
+}
+
+
