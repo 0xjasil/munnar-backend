@@ -18,6 +18,12 @@ function createTransporter() {
       user,
       pass,
     },
+    // Force IPv4 connection to prevent IPv6 socket ENETUNREACH
+    family: 4,
+    connectionTimeout: 10000,
+    tls: {
+      rejectUnauthorized: false,
+    },
   });
 }
 
@@ -87,6 +93,7 @@ export async function sendSignupOTPEmail(toEmail, otpCode, userName = "Runner") 
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error(`❌ [SMTP ERROR] Failed to send email to ${toEmail}:`, error.message);
+    console.log(`🔑 [DEV OTP FALLBACK] Code for ${toEmail} is: ${otpCode}`);
     return { success: false, error: error.message };
   }
 }
@@ -146,6 +153,7 @@ export async function sendResetOTPEmail(toEmail, otpCode) {
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error(`❌ [SMTP ERROR] Failed to send email to ${toEmail}:`, error.message);
+    console.log(`🔑 [DEV OTP FALLBACK] Code for ${toEmail} is: ${otpCode}`);
     return { success: false, error: error.message };
   }
 }
